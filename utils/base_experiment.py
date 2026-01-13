@@ -25,6 +25,11 @@ class BaseExperiment:
         self.env_class = env_class
         self.agent_class = agent_class
 
+        # 独立随机源，便于重现实验且不污染全局随机流
+        seed = config.get("seed", 0)
+        self.rng = random.Random(seed)
+        self.np_rng = np.random.default_rng(seed)
+
         self.num_episodes = config["num_episodes"]
         self.max_steps = config["max_steps"]
 
@@ -32,7 +37,12 @@ class BaseExperiment:
         results = []
         for ep in range(self.num_episodes):
             env = self.env_class(**self.config.get("env_args", {}))
-            agent = self.agent_class(env, **self.config.get("agent_args", {}))
+
+            agent_args = dict(self.config.get("agent_args", {}))
+            agent_args.setdefault("rng", self.rng)
+            agent_args.setdefault("np_rng", self.np_rng)
+
+            agent = self.agent_class(env, **agent_args)
             episode_log = self.run_episode(env, agent)
             results.append(episode_log)
 

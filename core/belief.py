@@ -119,11 +119,8 @@ class GridworldBelief(ParticleFilter):
         initial_particles = random.choices(valid_positions, k=num_particles)
 
         def transition_fn(s, a):
-            # 模拟一次 MDP 转移（不修改 env）
-            saved = env.agent_pos
-            env.agent_pos = s
-            next_state, _, _ = env.step(a)
-            env.agent_pos = saved
+            # 纯函数转移
+            next_state, _, _, _ = env.simulate_step(s, a)
             return next_state
 
         def observation_fn(s, a, o):
@@ -159,30 +156,17 @@ class MonsterBelief(ParticleFilter):
 
         initial_particles = [
             (random.choice(agent_positions),
-             random.choice(monster_positions),
+             random.randrange(len(monster_positions)),
              False)
             for _ in range(num_particles)
         ]
 
         def transition_fn(s, a):
-            agent_pos, monster_pos, has_key = s
-
-            # 模拟怪物走一步
-            idx = env.monster_path.index(monster_pos)
-            new_monster = env.monster_path[(idx + 1) % len(env.monster_path)]
-
-            # 模拟智能体移动（同 Gridworld）
-            saved = env.agent_pos
-            env.agent_pos = agent_pos
-            next_state, _, _ = env.step(a)
-            env.agent_pos = saved
-
-            new_has_key = has_key or (next_state == env.key_pos)
-
-            return (next_state, new_monster, new_has_key)
+            next_state, _, _, _ = env.simulate_step(s, a)
+            return next_state
 
         def observation_fn(s, a, o):
-            agent_pos, monster_pos, has_key = s
+            agent_pos, monster_idx, has_key = s
             obs_pos = o["agent"]
             obs_monster = o["monster"]
             obs_key = o["has_key"]
@@ -192,6 +176,7 @@ class MonsterBelief(ParticleFilter):
             dist_sq = (ax - ox) ** 2 + (ay - oy) ** 2
             agent_prob = np.exp(-dist_sq / (2 * 1.0))
 
+            monster_pos = env.monster_path[monster_idx]
             monster_prob = 1.0 if monster_pos == obs_monster else 0.1
             key_prob = 1.0 if has_key == obs_key else 0.1
 

@@ -49,6 +49,8 @@ class POMCP:
         c: float = 1.0,
         rollout_policy: Optional[callable] = None,
         discount: float = 0.95,
+        rng: Optional[random.Random] = None,
+        np_rng=None,
     ):
         """
         参数说明：
@@ -68,13 +70,18 @@ class POMCP:
         self.c = c
         self.rollout_policy = rollout_policy
         self.discount = discount
+        self.rng = rng or random.Random()
+        self.np_rng = np_rng
 
     def search(self) -> int:
         """
         从根粒子中启动多次模拟，选取最佳动作
         """
+        # 同步树根的粒子集，保持与当前 belief 一致
+        self.root.particles = list(self.belief.particles)
+
         for _ in range(self.n_simulations):
-            state = random.choice(self.belief.particles)
+            state = self.rng.choice(self.belief.particles)
             self._simulate(state, self.root, depth=0)
 
         # 选取访问次数最多的动作
@@ -105,21 +112,21 @@ class POMCP:
         action = best_action_node.action
 
         # 模拟一步环境（不污染真实环境）
-        saved = self.env.agent_pos
-        self.env.agent_pos = state
-        obs, reward, done = self.env.step(action)
-        next_state = self.env.agent_pos
-        self.env.agent_pos = saved
+        next_state, reward, done, obs = self.env.simulate_step(
+            state, action, rng=self.rng, np_rng=self.np_rng
+        )
+
+        obs_key = self._obs_to_key(obs)
 
         # 添加粒子（用于后续 belief 更新）
         if len(node.particles) < 500:
             node.particles.append(state)
 
         # 观测分支扩展
-        if obs not in best_action_node.children:
-            best_action_node.children[obs] = POMCPNode(parent=best_action_node)
+        if obs_key not in best_action_node.children:
+            best_action_node.children[obs_key] = POMCPNode(parent=best_action_node)
 
-        obs_node = best_action_node.children[obs]
+        obs_node = best_action_node.children[obs_key]
 
         # 递归模拟
         value = reward + self.discount * self._simulate(next_state, obs_node, depth + 1)
@@ -135,12 +142,29 @@ class POMCP:
         1. 将根节点更新为当前观测后的子节点
         2. 对新根构建新的粒子集合
         """
+        obs_key = self._obs_to_key(observation)
+
         if action in self.root.action_children:
-            if observation in self.root.action_children[action].children:
-                self.root = self.root.action_children[action].children[observation]
+            if obs_key in self.root.action_children[action].children:
+                self.root = self.root.action_children[action].children[obs_key]
+                self.root.particles = list(self.belief.particles)
                 return
         # 如果观测不在树中，重建根节点
         self.root = POMCPNode()
+        self.root.particles = list(self.belief.particles)
+
+    @staticmethod
+    def _obs_to_key(obs):
+        """将观测转换为可哈希的键，用于树索引。"""
+        try:
+            hash(obs)
+            return obs
+        except TypeError:
+            if isinstance(obs, dict):
+                return tuple(sorted((k, POMCP._obs_to_key(v)) for k, v in obs.items()))
+            if isinstance(obs, (list, tuple)):
+                return tuple(POMCP._obs_to_key(v) for v in obs)
+            return str(obs)
 
     def clear(self):
         """

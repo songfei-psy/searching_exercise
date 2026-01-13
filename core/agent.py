@@ -18,9 +18,9 @@ class BaseAgent:
 # MCTS Agent：用于完全可观测 MDP Gridworld
 # ===================================================
 class MCTSAgent(BaseAgent):
-    def __init__(self, env, n_simulations=100, max_depth=20, c=1.4):
+    def __init__(self, env, n_simulations=100, max_depth=20, c=1.4, rng=None, np_rng=None):
         super().__init__(env)
-        self.planner = MCTS(env, n_simulations=n_simulations, max_depth=max_depth, c=c)
+        self.planner = MCTS(env, n_simulations=n_simulations, max_depth=max_depth, c=c, rng=rng, np_rng=np_rng)
 
     def act(self, observation):
         return self.planner.search(observation)
@@ -39,13 +39,17 @@ class POMCPAgent(BaseAgent):
         c=1.0,
         num_particles=200,
         rollout_policy=None,
+        rng=None,
+        np_rng=None,
     ):
         super().__init__(env)
 
         if belief_type == "gridworld":
             self.belief = GridworldBelief(env, num_particles=num_particles)
+            self._belief_factory = lambda: GridworldBelief(env, num_particles=num_particles)
         elif belief_type == "monster":
             self.belief = MonsterBelief(env, num_particles=num_particles)
+            self._belief_factory = lambda: MonsterBelief(env, num_particles=num_particles)
         else:
             raise ValueError("Invalid belief type")
 
@@ -56,6 +60,8 @@ class POMCPAgent(BaseAgent):
             max_depth=max_depth,
             c=c,
             rollout_policy=rollout_policy,
+            rng=rng,
+            np_rng=np_rng,
         )
 
     def act(self, observation):
@@ -70,5 +76,5 @@ class POMCPAgent(BaseAgent):
         self.planner.update_belief(action, observation)
 
     def reset(self):
-        self.belief = type(self.belief)(self.env)
+        self.belief = self._belief_factory()
         self.planner.clear()

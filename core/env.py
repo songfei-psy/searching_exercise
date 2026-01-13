@@ -32,7 +32,7 @@ class BaseEnv(ABC):
 
     def reset(self):
         self.agent_pos = self.start_pos
-        return self.get_observation(self.agent_pos)
+        return self.get_observation_from_state(self.agent_pos)
 
     def step(self, action):
         next_pos = self._transition(self.agent_pos, action)
@@ -40,8 +40,27 @@ class BaseEnv(ABC):
             self.agent_pos = next_pos
         reward = self.reward_fn(self.agent_pos)
         done = self.is_terminal(self.agent_pos)
-        obs = self.get_observation(self.agent_pos)
+        obs = self.get_observation_from_state(self.agent_pos)
         return obs, reward, done
+
+    # ----------- 无副作用模拟接口 -----------
+    def simulate_step(self, state, action, rng=None, np_rng=None):
+        """
+        在给定状态上进行一步仿真，不修改环境自身的内部状态。
+        rng: random.Random 实例（用于离散随机）
+        np_rng: numpy 随机生成器（用于连续噪声）
+        """
+        rng = rng or random.Random()
+        np_rng = np_rng or np.random.default_rng()
+
+        next_state = self._transition_from_state(state, action, rng)
+        if not self._valid_position(next_state):
+            next_state = state
+
+        reward = self.get_reward_from_state(next_state)
+        done = self.is_terminal(next_state)
+        obs = self.get_observation_from_state(next_state, np_rng)
+        return next_state, reward, done, obs
 
     def _valid_position(self, pos):
         x, y = pos
@@ -52,9 +71,20 @@ class BaseEnv(ABC):
     def _transition(self, current_pos, action):
         pass
 
+    def _transition_from_state(self, state, action, rng):
+        """纯函数版本的转移，用于规划/仿真。默认与 _transition 等价。"""
+        return self._transition(state, action)
+
     @abstractmethod
     def get_observation(self, state):
         pass
+
+    def get_observation_from_state(self, state, np_rng=None):
+        """纯函数版本观测，可在仿真中使用，不依赖环境当前状态。"""
+        return self.get_observation(state)
+
+    def get_reward_from_state(self, state):
+        return self.reward_fn(state)
 
     def is_terminal(self, state):
         return state == self.goal_pos
@@ -117,6 +147,16 @@ class StochasticGridworld(BaseEnv):
         x, y = current_pos
         return (x + dx, y + dy)
 
+    def _transition_from_state(self, state, action, rng):
+        prob = rng.random()
+        if prob < 0.8:
+            chosen_action = action
+        else:
+            chosen_action = rng.choice(list(self.ACTIONS.keys()))
+        dx, dy = self.ACTIONS[chosen_action]
+        x, y = state
+        return (x + dx, y + dy)
+
     def get_observation(self, state):
         return state
 
@@ -133,6 +173,13 @@ class PartialObservableGrid(StochasticGridworld):
         noisy_y = np.random.normal(y, self.obs_noise_std)
         return (noisy_x, noisy_y)
 
+    def get_observation_from_state(self, state, np_rng=None):
+        np_rng = np_rng or np.random.default_rng()
+        x, y = state
+        noisy_x = np_rng.normal(x, self.obs_noise_std)
+        noisy_y = np_rng.normal(y, self.obs_noise_std)
+        return (noisy_x, noisy_y)
+
 
 # === 怪物格子世界 ===
 class MonsterGridworld(PartialObservableGrid):
@@ -147,7 +194,8 @@ class MonsterGridworld(PartialObservableGrid):
     def reset(self):
         self.has_key = False
         self.monster_index = 0
-        return super().reset()
+        obs = super().reset()
+        return obs
 
     def _transition(self, current_pos, action):
         self.monster_index = (self.monster_index + 1) % len(self.monster_path)
@@ -174,7 +222,58 @@ class MonsterGridworld(PartialObservableGrid):
             "has_key": self.has_key
         }
 
+    def _transition_from_state(self, state, action, rng):
+        agent_pos, monster_idx, has_key = state
+
+        monster_idx = (monster_idx + 1) % len(self.monster_path)
+        monster_pos = self.monster_path[monster_idx]
+
+        dx, dy = self.ACTIONS[action]
+        x, y = agent_pos
+        candidate = (x + dx, y + dy)
+        next_pos = candidate if self._valid_position(candidate) else agent_pos
+
+        if next_pos == monster_pos:
+            next_pos = self.start_pos
+            has_key = False
+
+        if next_pos == self.key_pos:
+            has_key = True
+
+        if next_pos == self.door_pos and not has_key:
+            next_pos = agent_pos
+
+        return (next_pos, monster_idx, has_key)
+
+    def get_observation_from_state(self, state, np_rng=None):
+        np_rng = np_rng or np.random.default_rng()
+        agent_pos, monster_idx, has_key = state
+        noisy_pos = super().get_observation_from_state(agent_pos, np_rng)
+        monster_pos = self.monster_path[monster_idx]
+        return {
+            "agent": noisy_pos,
+            "monster": monster_pos,
+            "has_key": has_key,
+        }
+
+    def get_reward_from_state(self, state):
+        agent_pos, _, _ = state
+        return self.reward_fn(agent_pos)
+
+    def simulate_step(self, state, action, rng=None, np_rng=None):
+        rng = rng or random.Random()
+        np_rng = np_rng or np.random.default_rng()
+
+        next_state = self._transition_from_state(state, action, rng)
+        reward = self.get_reward_from_state(next_state)
+        done = self.is_terminal(next_state)
+        obs = self.get_observation_from_state(next_state, np_rng)
+        return next_state, reward, done, obs
+
     def is_terminal(self, state):
+        if isinstance(state, tuple) and len(state) == 3:
+            agent_pos, _, has_key = state
+            return agent_pos == self.goal_pos and has_key
         return state == self.goal_pos and self.has_key
 
     def render(self, mode='human'):

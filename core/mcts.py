@@ -108,6 +108,8 @@ class MCTS:
         progressive_widening: bool = False,
         max_children: int = 5,
         parallel: bool = False,
+        rng: Optional[random.Random] = None,
+        np_rng=None,
     ):
         """
         参数说明：
@@ -143,6 +145,10 @@ class MCTS:
         self.max_children = max_children
 
         self.parallel = parallel  # 预留
+
+        # 独立随机源，避免污染全局随机序列
+        self.rng = rng or random.Random()
+        self.np_rng = np_rng
 
     # =====================================================
     # Public API
@@ -189,7 +195,7 @@ class MCTS:
             if len(node.children) >= self.max_children:
                 return node.best_child(self.c)
 
-        action = random.choice(actions)
+        action = self.rng.choice(actions)
         next_state, _, _ = self._simulate_step(node.state, action)
         return node.expand(action, next_state)
 
@@ -206,7 +212,7 @@ class MCTS:
             if self.rollout_policy:
                 action = self.rollout_policy(state)
             else:
-                action = random.choice(list(self.env.ACTIONS.keys()))
+                action = self.rng.choice(list(self.env.ACTIONS.keys()))
 
             state, reward, _ = self._simulate_step(state, action)
             total_reward += discount * reward
@@ -226,9 +232,7 @@ class MCTS:
         """
         用于 MCTS 的环境 step（不污染真实环境）
         """
-        saved_pos = self.env.agent_pos
-        self.env.agent_pos = state
-        obs, reward, done = self.env.step(action)
-        next_state = self.env.agent_pos
-        self.env.agent_pos = saved_pos
+        next_state, reward, done, _ = self.env.simulate_step(
+            state, action, rng=self.rng, np_rng=self.np_rng
+        )
         return next_state, reward, done
