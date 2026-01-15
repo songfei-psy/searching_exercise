@@ -27,7 +27,7 @@ class MCTSAgent(BaseAgent):
 
 
 # ===================================================
-# POMCP Agent：用于 POMDP Gridworld（如 MonsterWorld）
+# POMCP Agent：用于 POMDP Gridworld
 # ===================================================
 class POMCPAgent(BaseAgent):
     def __init__(

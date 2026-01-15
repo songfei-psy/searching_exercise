@@ -1,4 +1,4 @@
-# core/mcts.py
+# 蒙特卡洛树搜索（MCTS）实现
 
 import math
 import random
@@ -23,7 +23,7 @@ class MCTSNode:
     ):
         self.state = state
         self.parent = parent
-        self.action = action            # 从父节点到该节点的动作
+        self.action = action  # 从父节点到该节点的动作
         self.children: Dict[int, MCTSNode] = {}
 
         self.visit_count = 0
@@ -61,9 +61,7 @@ class MCTSNode:
         return len(self.children) == 0
 
     def expand(self, action: int, next_state: Any) -> "MCTSNode":
-        """
-        扩展一个新子节点
-        """
+        """扩展一个新子节点"""
         child = MCTSNode(
             state=next_state,
             parent=self,
@@ -74,15 +72,11 @@ class MCTSNode:
         return child
 
     def best_child(self, c: float) -> "MCTSNode":
-        """
-        按 UCB 选择最优子节点
-        """
+        """按 UCB 选择最优子节点"""
         return max(self.children.values(), key=lambda n: n.ucb_score(c))
 
     def backpropagate(self, reward: float):
-        """
-        回传（Backpropagation）
-        """
+        """回传Backpropagation"""
         self.visit_count += 1
         self.total_reward += reward
         if self.parent:
@@ -113,25 +107,15 @@ class MCTS:
     ):
         """
         参数说明：
-        ----------
-        env:
-            环境实例（必须支持 step / is_terminal）
-        n_simulations:
-            模拟次数
-        max_depth:
-            最大搜索深度
-        c:
-            UCT 探索系数
-        rollout_policy:
-            rollout 阶段策略（None 表示随机）
-        heuristic_fn:
-            启发式评估函数（用于非终止 rollout）
-        progressive_widening:
-            是否启用渐进式扩展
-        max_children:
-            渐进式扩展最大子节点数
-        parallel:
-            是否启用并行模拟（此处预留接口）
+        env: 环境实例（必须支持 step / is_terminal 方法）
+        n_simulations: 模拟次数
+        max_depth: 最大搜索深度
+        c: UCT 探索系数
+        rollout_policy: rollout 阶段策略, None 表示随机采样
+        heuristic_fn: 启发式评估函数（用于非终止 rollout 状态）
+        progressive_widening: 是否启用渐进式扩展
+        max_children: 渐进式扩展最大子节点数
+        parallel: 是否启用并行模拟（此处预留接口）
         """
         self.env = env
         self.n_simulations = n_simulations
@@ -215,7 +199,7 @@ class MCTS:
                 action = self.rng.choice(list(self.env.ACTIONS.keys()))
 
             state, reward, _ = self._simulate_step(state, action)
-            total_reward += discount * reward
+            total_reward += discount * reward  # 累计折扣奖励
             discount *= 0.99
             depth += 1
 

@@ -32,7 +32,10 @@ class BaseEnv(ABC):
 
     def reset(self):
         self.agent_pos = self.start_pos
-        return self.get_observation_from_state(self.agent_pos)
+        obs = self.get_observation(self.agent_pos)
+        # 记录最近观测，便于渲染标注
+        self._last_obs = obs
+        return obs
 
     def step(self, action):
         next_pos = self._transition(self.agent_pos, action)
@@ -40,13 +43,13 @@ class BaseEnv(ABC):
             self.agent_pos = next_pos
         reward = self.reward_fn(self.agent_pos)
         done = self.is_terminal(self.agent_pos)
-        obs = self.get_observation_from_state(self.agent_pos)
+        obs = self.get_observation(self.agent_pos)
+        self._last_obs = obs
         return obs, reward, done
 
-    # ----------- 无副作用模拟接口 -----------
     def simulate_step(self, state, action, rng=None, np_rng=None):
         """
-        在给定状态上进行一步仿真，不修改环境自身的内部状态。
+        在给定状态上进行一步仿真，不修改环境自身的内部状态，用于规划算法。
         rng: random.Random 实例（用于离散随机）
         np_rng: numpy 随机生成器（用于连续噪声）
         """
@@ -63,6 +66,7 @@ class BaseEnv(ABC):
         return next_state, reward, done, obs
 
     def _valid_position(self, pos):
+        """检查位置是否合法（在网格内且不在障碍物上）"""
         x, y = pos
         rows, cols = self.grid_size
         return 0 <= x < rows and 0 <= y < cols and pos not in self.obstacles
@@ -90,7 +94,7 @@ class BaseEnv(ABC):
         return state == self.goal_pos
 
     def default_reward_fn(self, pos):
-        return 1.0 if pos == self.goal_pos else -0.1
+        return 1.0 if pos == self.goal_pos else -0.1  # 到达目标奖励1，否则每步惩罚0.1
 
     def render(self, mode='human'):
         rows, cols = self.grid_size
@@ -120,24 +124,57 @@ class BaseEnv(ABC):
                                              edgecolor='green', facecolor='none', lw=2))
 
         self._ax.set_title(self.__class__.__name__)
+        # 图例与旁注
+        self._draw_legend()
+        self._draw_annotation()
         self._fig.canvas.draw()
         plt.pause(0.1)
+
+    def _legend_handles(self):
+        return [
+            patches.Patch(color='black', label='Obstacle'),
+            patches.Circle((0, 0), 0.3, color='blue', label='Agent'),
+            patches.Rectangle((0, 0), 0.8, 0.8, edgecolor='green', facecolor='none', lw=2, label='Goal'),
+        ]
+
+    def _draw_legend(self):
+        try:
+            handles = self._legend_handles()
+            labels = [h.get_label() for h in handles]
+            self._ax.legend(handles, labels, loc='upper right', framealpha=0.8)
+        except Exception:
+            pass
+
+    def _get_annotation_text(self):
+        # 默认展示最近观测或当前位置
+        if hasattr(self, '_last_obs') and self._last_obs is not None:
+            return f"obs={self._last_obs}"
+        return f"state={self.agent_pos}"
+
+    def _draw_annotation(self):
+        ax, ay = self.agent_pos
+        info = self._get_annotation_text()
+        self._ax.text(ay + 0.3, ax - 0.3, info, fontsize=8,
+                      bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='gray', alpha=0.7))
 
 
 # === 确定性环境 ===
 class DeterministicGridworld(BaseEnv):
     def _transition(self, current_pos, action):
+        """确定性转移函数，根据动作返回下一个位置"""
         dx, dy = self.ACTIONS[action]
         x, y = current_pos
         return (x + dx, y + dy)
 
     def get_observation(self, state):
+        """获取观测，默认观测即为状态"""
         return state
 
 
 # === 随机环境 ===
 class StochasticGridworld(BaseEnv):
     def _transition(self, current_pos, action):
+        """随机转移函数，有一定概率执行随机动作"""
         prob = random.random()
         if prob < 0.8:
             chosen_action = action
@@ -157,7 +194,7 @@ class StochasticGridworld(BaseEnv):
         x, y = state
         return (x + dx, y + dy)
 
-    def get_observation(self, state):
+    def get_observation(self, state): 
         return state
 
 
@@ -168,6 +205,7 @@ class PartialObservableGrid(StochasticGridworld):
         self.obs_noise_std = obs_noise_std
 
     def get_observation(self, state):
+        """获取带噪声的观测"""
         x, y = state
         noisy_x = np.random.normal(x, self.obs_noise_std)
         noisy_y = np.random.normal(y, self.obs_noise_std)
@@ -194,7 +232,10 @@ class MonsterGridworld(PartialObservableGrid):
     def reset(self):
         self.has_key = False
         self.monster_index = 0
-        obs = super().reset()
+        # 不使用父类的 get_observation_from_state，以避免复合状态解包错误
+        self.agent_pos = self.start_pos
+        obs = self.get_observation(self.agent_pos)
+        self._last_obs = obs
         return obs
 
     def _transition(self, current_pos, action):
@@ -293,6 +334,25 @@ class MonsterGridworld(PartialObservableGrid):
 
         self._fig.canvas.draw()
         plt.pause(0.1)
+
+    def _legend_handles(self):
+        base = super()._legend_handles()
+        # 追加怪物 / 钥匙 / 门的图例
+        base += [
+            patches.Circle((0, 0), 0.3, color='red', label='Monster'),
+            patches.RegularPolygon((0, 0), numVertices=5, radius=0.3, color='orange', label='Key'),
+            patches.Rectangle((0, 0), 0.8, 0.8, edgecolor='brown', facecolor='none', lw=2, label='Door'),
+        ]
+        return base
+
+    def _get_annotation_text(self):
+        # 展示最近观测的关键字段
+        if hasattr(self, '_last_obs') and isinstance(self._last_obs, dict):
+            agent_obs = self._last_obs.get('agent')
+            monster_obs = self._last_obs.get('monster')
+            has_key = self._last_obs.get('has_key')
+            return f"obs.agent={agent_obs}, obs.monster={monster_obs}, has_key={has_key}"
+        return f"state={self.agent_pos}, has_key={self.has_key}"
 
 
 # === main函数：环境测试 ===

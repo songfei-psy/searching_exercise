@@ -1,4 +1,4 @@
-# experiments/base_experiment.py
+# 基本实验框架
 
 import time
 import numpy as np
