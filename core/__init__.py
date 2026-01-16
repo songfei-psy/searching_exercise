@@ -1,4 +1,4 @@
-# core/__init__.py
+# Core module for gridworld environments and planning algorithms
 
 from .env import (
     BaseEnv,
