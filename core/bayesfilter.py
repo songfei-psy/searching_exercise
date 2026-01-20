@@ -163,7 +163,7 @@ class MultiSensorKalmanFilter:
     
 
 class ParticleFilter:
-    """简单的粒子滤波器实现，与卡尔曼滤波类的命名保持一致"""
+    """简单的粒子滤波器实现"""
 
     def __init__(self, num_particles, state_dim, motion_model, obs_model, process_noise, observation_noise):
         self.num_particles = num_particles
@@ -173,11 +173,12 @@ class ParticleFilter:
         self.process_noise = process_noise
         self.observation_noise = observation_noise
 
-        # 初始化粒子和权重
+        # 初始化粒子和权重(均匀分布)
         self.particles = np.random.randn(self.num_particles, self.state_dim)
         self.weights = np.ones(self.num_particles) / self.num_particles
 
     def predict(self):
+        """预测步骤，对粒子应用运动模型并添加过程噪声"""
         noise = np.random.multivariate_normal(np.zeros(self.state_dim), self.process_noise, self.num_particles)
         for i in range(self.num_particles):
             self.particles[i] = self.motion_model(self.particles[i]) + noise[i]
@@ -187,7 +188,7 @@ class ParticleFilter:
         for i in range(self.num_particles):
             predicted_obs = self.obs_model(self.particles[i])
             error = measurement - predicted_obs
-            likelihood = np.exp(-0.5 * error.T @ inv_R @ error)
+            likelihood = np.exp(-0.5 * error.T @ inv_R @ error)  # 高斯似然，可以改为其他分布
             self.weights[i] = likelihood
         self.weights += 1e-300  # 防止全为零
         self.weights /= np.sum(self.weights)
@@ -197,7 +198,7 @@ class ParticleFilter:
         return 1.0 / np.sum(np.square(self.weights))
 
     def resample(self):
-        indices = np.random.choice(self.num_particles, self.num_particles, p=self.weights)
+        indices = np.random.choice(self.num_particles, self.num_particles, p=self.weights)  # 重采样，有放回
         self.particles = self.particles[indices]
         self.weights = np.ones(self.num_particles) / self.num_particles
 
