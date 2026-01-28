@@ -1,6 +1,6 @@
 # 🔍 POMDP Gridworld Learning Framework
 
-本项目旨在通过构建一系列逐步复杂化的 Gridworld 环境，系统学习与实现从 **MCTS → POMDP → POMCP** 的完整技术栈。
+本项目旨在通过构建一系列逐步复杂化的 Gridworld 环境，系统学习与实现从 **贝叶斯滤波 → MCTS → POMCP** 的完整技术栈。
 
 项目最终目标是使用 POMCP 智能体，在一个含有钥匙、怪物、门的部分可观测 Gridworld 中进行规划与决策。
 
@@ -10,30 +10,29 @@
 
 ```
 
-pomdp_mcts_learning/
-├── core/               # 核心模块（环境 + Agent + 算法）
-│   ├── env.py
-│   ├── mcts.py
-│   ├── pomcp.py
-│   ├── belief.py
-│   ├── agent.py
-│   └── **init**.py
+searching_exercise/
+├── core/                      # 核心模块
+│   ├── __init__.py
+│   ├── env.py                 # Gridworld 环境
+│   ├── agent.py               # 智能体类
+│   ├── bayesfilter.py         # 贝叶斯滤波
+│   ├── belief.py              # 粒子滤波与信念模型
+│   ├── mcts.py                # MCTS/UCT 搜索
+│   └── pomcp.py               # POMCP 规划算法
 │
-├── utils/              # 工具模块（评估、绘图、实验基类等）
-│   ├── base_experiment.py
-│   ├── metrics.py
-│   ├── utils.py
-│   ├── trajectory_replay.py
-│   └── metrics_plotter.py
+├── utils/                     # 工具模块
+│   ├── base_experiment.py     # 实验框架
+│   ├── metrics.py             # 指标收集
+│   └── utils.py               # 辅助函数
 │
-├── notebooks/          # Jupyter Notebook 学习笔记
+├── notbooks/                  # Jupyter Notebook
+│   ├── 00_bayes_filter_hw.ipynb
 │   ├── 01_mcts_workflow.ipynb
-│   ├── 02_belief_update_demo.ipynb
-│   ├── 03_pomcp_visualization.ipynb
-│   └── 04_comparative_analysis.ipynb
+│   ├── 02_pomcp_update_demo.ipynb
+│   ├── 03_comparative_analysis.ipynb
+│   └── results/               # 实验结果输出
 │
-├── results/            # 实验输出 JSON（自动生成）
-├── scripts/            # 脚本（可选，用于批量运行）
+├── demo.py                    # 演示脚本
 └── README.md
 
 ````
@@ -52,22 +51,24 @@ pip install numpy matplotlib
 
 ---
 
-### 2. 运行 MCTS Agent 示例（完全可观测）
+### 2. 学习路径
 
-```python
-from core import DeterministicGridworld, MCTSAgent
+按以下顺序学习最佳：
 
-env = DeterministicGridworld()
-agent = MCTSAgent(env)
+1. **贝叶斯滤波** (`00_bayes_filter_hw.ipynb`)
+   - 学习粒子滤波原理
+   - 理解观测与状态更新
 
-obs = env.reset()
-done = False
+2. **MCTS 搜索** (`01_mcts_workflow.ipynb`)
+   - 完全可观测环境下的规划
+   - UCB 与树搜索
 
-while not done:
-    env.render()
-    action = agent.act(obs)
-    obs, reward, done = env.step(action)
-```
+3. **POMCP 算法** (`02_pomcp_update_demo.ipynb`)
+   - 部分可观测问题求解
+   - 历史树与粒子信念
+
+4. **对比分析** (`03_comparative_analysis.ipynb`)
+   - 多算法性能评测
 
 ---
 
@@ -77,10 +78,10 @@ while not done:
 
 | Notebook                        | 内容                                |
 | ------------------------------- | --------------------------------- |
+| `00_bayes_filter_hw.ipynb`      | 贝叶斯滤波基础与应用实验                    |
 | `01_mcts_workflow.ipynb`        | MCTS 参数调优与性能分析                    |
-| `02_belief_update_demo.ipynb`   | POMDP 中观测噪声影响分析                   |
-| `03_pomcp_visualization.ipynb`  | 粒子变化与信念分析                         |
-| `04_comparative_analysis.ipynb` | 多智能体对比实验（POMCP vs MCTS vs Random） |
+| `02_pomcp_update_demo.ipynb`    | POMCP 更新演示与可视化分析                   |
+| `03_comparative_analysis.ipynb` | 多智能体对比实验（POMCP vs MCTS vs Random） |
 
 ---
 
@@ -102,21 +103,13 @@ while not done:
 | 模块                   | 功能                                            |
 | -------------------- | --------------------------------------------- |
 | `env.py`             | 多种 Gridworld 环境（Deterministic / POMDP / 怪物世界） |
+| `bayesfilter.py`     | 贝叶斯滤波 / 粒子滤波基础实现                           |
+| `belief.py`          | 粒子滤波器 + 观测模型                                  |
 | `mcts.py`            | 通用 MCTS / UCT 搜索器                             |
 | `pomcp.py`           | 基于历史与粒子的 POMCP 算法                             |
-| `belief.py`          | 粒子滤波器 + 观测模型                                  |
 | `agent.py`           | Agent 封装（MCTS / POMCP / Greedy / Random）      |
 | `base_experiment.py` | 批量实验运行框架                                      |
 | `metrics.py`         | 指标记录与对比图绘制                                    |
-
----
-
-## 🧩 扩展建议
-
-* 加入 Q-MDP、DESPOT、BAMCP 等近似或强化策略
-* 结合 Gym API 接入 RLlib 或 PyTorch 训练框架
-* 增加高维 Gridworld（如带颜色、多个物体等）
-* 多智能体对抗 / 协作 Gridworld 场景
 
 ---
 
